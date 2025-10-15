@@ -18,7 +18,7 @@ This is a Python port of the BEER algorithm originally implemented in R. BEER re
 > Zhang, F., Wu, Y., & Tian, W. (2019). A novel approach to remove the batch effect of single-cell data. *Cell Discovery*, 5, 46. https://doi.org/10.1038/s41421-019-0114-x
 
 ## Key Features
-- ✅ **Detect Batch Effect Quantitatively**
+- ✅ **Detect Batch Effect quantitatively, instead of visual inspection**
 - ✅ **Modern Python implementation** using NumPy, SciPy, AnnData, and Scanpy
 - ✅ **Optimized for performance** with vectorized operations
 - ✅ **Type hints** for better code quality and IDE support
@@ -65,7 +65,7 @@ pip install bbknn
 ```python
 import anndata as ad
 import scanpy as sc
-from beer_python import BEER
+from beer import BEER
 
 # Load your data
 adata = ad.read_h5ad('your_data.h5ad')
@@ -81,7 +81,9 @@ beer = BEER(
 )
 
 # Run BEER
-result = beer.fit_transform(adata, batch_key='batch')
+result = beer.fit_transform(adata, batch_key='batch',
+normalize=False # set to False if X is log normed already
+)
 
 # Access results
 selected_pcs = result.selected_pcs
@@ -93,7 +95,15 @@ sc.tl.umap(result.adata)
 
 # Visualize
 sc.pl.umap(result.adata, color='batch')
+
+# See correlation
+from beer import plot_correlation_scatter
+plot_correlation_scatter(result)
+
 ```
+![correlation](./example.png)
+
+see [FAQ.md](FAQ.md) to know what Correlation means
 
 ### Advanced Usage
 
@@ -108,13 +118,16 @@ beer = BEER(
     use_combat=True
 )
 
-result = beer.fit_transform(adata, batch_key='batch')
+result = beer.fit_transform(adata, batch_key='batch', 
+normalize=False # set to False if X is log normed already
+)
 ```
+
 
 #### BBKNN Enhancement
 
 ```python
-from beer_python import apply_bbknn
+from beer import apply_bbknn
 
 # Apply BBKNN for better batch mixing
 umap_bbknn = apply_bbknn(
@@ -222,7 +235,7 @@ adata_corrected = ad.read_h5ad('beer_corrected.h5ad')
 Run BEER from command line:
 
 ```bash
-python beer_python.py input.h5ad \
+python beer.py input.h5ad \
     --output beer_output.h5ad \
     --batch-key batch \
     --n-pcs 50 \
