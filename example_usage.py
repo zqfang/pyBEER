@@ -6,7 +6,7 @@ This script demonstrates how to use the BEER Python package for
 batch effect removal in single-cell data.
 
 Author: Feng Zhang (original R), Python port examples
-Date: October 2025
+Date: November 2024
 """
 
 import numpy as np
@@ -14,15 +14,8 @@ import pandas as pd
 import anndata as ad
 import scanpy as sc
 import matplotlib.pyplot as plt
-import seaborn as sns
 
-from beer import (
-    BEER,
-    BEERResult,
-    apply_combat_to_pca,
-    apply_bbknn,
-    plot_correlation_scatter
-)
+from beer import beer, get_use, select_use, BEERResult
 
 
 # ===========================================================================
@@ -62,32 +55,29 @@ def example1_basic_usage():
     print(f"Created simulated data: {adata.n_obs} cells, {adata.n_vars} genes")
 
     # Run BEER
-    beer = BEER(
-        n_pcs=50,
-        n_groups=30,
-        n_variable_genes=1000,
-        n_rounds=1,
-        use_combat=True,
-        random_seed=123
+    result = beer(
+        adata,
+        batch_key='batch',
+        gnum=30,
+        pcnum=50,
+        gn=1000,
+        combat=False,
+        seed=123,
+        n_rounds=1
     )
 
-    result = beer.fit_transform(adata, batch_key='batch')
-
-    print(f"\nSelected {len(result.selected_pcs)} PCs with low batch correlation")
-    print(f"Selected PC indices: {result.selected_pcs}")
-
-    # Visualize results
-    plot_correlation_scatter(result, figsize=(10, 6))
+    print(f"\nSelected {len(result.select)} PCs with low batch correlation")
+    print(f"Selected PC indices (0-based): {result.select}")
 
     # Compute UMAP with selected PCs
-    sc.pp.neighbors(result.adata, n_pcs=len(result.selected_pcs), use_rep='X_pca')
+    sc.pp.neighbors(result.adata, n_pcs=len(result.select), use_rep='X_pca')
     sc.tl.umap(result.adata)
 
     # Plot
     fig, axes = plt.subplots(1, 2, figsize=(14, 5))
 
     sc.pl.umap(result.adata, color='batch', ax=axes[0], show=False, title='After BEER')
-    sc.pl.umap(result.adata, color='beer_group', ax=axes[1], show=False,
+    sc.pl.umap(result.adata, color='group', ax=axes[1], show=False,
                title='BEER Groups', legend_loc='none')
 
     plt.tight_layout()
@@ -108,7 +98,6 @@ def example2_real_data():
     print("=" * 80)
 
     # Download example dataset (PBMC3k from 10X Genomics)
-    # This assumes you have the data; replace with your own data path
     try:
         adata = sc.datasets.pbmc3k()
         print(f"Loaded PBMC3k dataset: {adata.n_obs} cells, {adata.n_vars} genes")
@@ -125,21 +114,20 @@ def example2_real_data():
         print(f"After QC: {adata.n_obs} cells, {adata.n_vars} genes")
 
         # Run BEER
-        beer = BEER(
-            n_pcs=50,
-            n_groups=30,
-            n_variable_genes=2000,
-            n_rounds=1,
-            use_combat=True,
-            random_seed=123
+        result = beer(
+            adata,
+            batch_key='batch',
+            gnum=30,
+            pcnum=50,
+            gn=2000,
+            combat=False,
+            seed=123
         )
 
-        result = beer.fit_transform(adata, batch_key='batch', normalize=True)
-
-        print(f"\nSelected {len(result.selected_pcs)} PCs")
+        print(f"\nSelected {len(result.select)} PCs")
 
         # Compute UMAP with selected PCs
-        sc.pp.neighbors(result.adata, n_pcs=len(result.selected_pcs), use_rep='X_pca')
+        sc.pp.neighbors(result.adata, n_pcs=len(result.select), use_rep='X_pca')
         sc.tl.umap(result.adata)
 
         # Plot
@@ -156,85 +144,13 @@ def example2_real_data():
 
 
 # ===========================================================================
-# Example 3: BBKNN Enhancement
+# Example 3: Multiple Batches
 # ===========================================================================
 
-def example3_bbknn_enhancement():
-    """Example 3: Using BBKNN enhancement for better batch mixing."""
+def example3_multiple_batches():
+    """Example 3: Handling multiple batches (>2)."""
     print("=" * 80)
-    print("Example 3: BBKNN Enhancement")
-    print("=" * 80)
-
-    # Create simulated data with strong batch effect
-    np.random.seed(123)
-    n_cells_per_batch = 300
-    n_genes = 1500
-
-    X1 = np.random.negative_binomial(5, 0.3, size=(n_cells_per_batch, n_genes))
-    X2 = np.random.negative_binomial(8, 0.4, size=(n_cells_per_batch, n_genes))  # Strong batch effect
-
-    X = np.vstack([X1, X2]).astype(float)
-    batch = np.array(['Batch1'] * n_cells_per_batch + ['Batch2'] * n_cells_per_batch)
-
-    adata = ad.AnnData(X)
-    adata.obs['batch'] = batch
-
-    # Run BEER
-    beer = BEER(n_pcs=50, n_groups=20, n_variable_genes=1000, use_combat=True)
-    result = beer.fit_transform(adata, batch_key='batch')
-
-    print(f"Selected {len(result.selected_pcs)} PCs")
-
-    # Apply BBKNN enhancement
-    try:
-        umap_bbknn = apply_bbknn(
-            result.adata,
-            selected_pcs=result.selected_pcs,
-            batch_key='batch',
-            neighbors_within_batch=3,
-            n_trees=10,
-            n_umap_components=2
-        )
-
-        result.adata.obsm['X_umap_bbknn'] = umap_bbknn
-
-        # Compare standard vs BBKNN UMAP
-        fig, axes = plt.subplots(1, 2, figsize=(14, 5))
-
-        sc.pl.umap(result.adata, color='batch', ax=axes[0], show=False,
-                   title='Standard UMAP')
-
-        # Plot BBKNN UMAP
-        axes[1].scatter(
-            umap_bbknn[:, 0],
-            umap_bbknn[:, 1],
-            c=[0 if b == 'Batch1' else 1 for b in result.adata.obs['batch']],
-            cmap='Set1',
-            s=5,
-            alpha=0.7
-        )
-        axes[1].set_title('BBKNN-enhanced UMAP')
-        axes[1].set_xlabel('UMAP 1')
-        axes[1].set_ylabel('UMAP 2')
-
-        plt.tight_layout()
-        plt.savefig('example3_bbknn_comparison.png', dpi=300, bbox_inches='tight')
-        print("Saved BBKNN comparison to example3_bbknn_comparison.png")
-
-    except ImportError:
-        print("BBKNN not installed. Install with: pip install bbknn")
-
-    return result
-
-
-# ===========================================================================
-# Example 4: Multiple Batches
-# ===========================================================================
-
-def example4_multiple_batches():
-    """Example 4: Handling multiple batches (>2)."""
-    print("=" * 80)
-    print("Example 4: Multiple Batches")
+    print("Example 3: Multiple Batches")
     print("=" * 80)
 
     # Create 4 batches
@@ -261,91 +177,39 @@ def example4_multiple_batches():
     print(f"Batch distribution: {pd.Series(batch).value_counts().to_dict()}")
 
     # Run BEER
-    beer = BEER(
-        n_pcs=50,
-        n_groups=20,
-        n_variable_genes=1000,
+    result = beer(
+        adata,
+        batch_key='batch',
+        gnum=20,
+        pcnum=50,
+        gn=1000,
         n_rounds=2,  # Use 2 rounds for multiple batches
-        use_combat=True
+        combat=False,
+        seed=123
     )
 
-    result = beer.fit_transform(adata, batch_key='batch')
-
-    print(f"\nSelected {len(result.selected_pcs)} PCs")
-    print(f"Found {len(result.mutual_pairs)} mutual nearest neighbor pairs")
+    print(f"\nSelected {len(result.select)} PCs")
+    print(f"Found {len(result.vp)} mutual nearest neighbor pairs")
 
     # Visualize
-    sc.pp.neighbors(result.adata, n_pcs=len(result.selected_pcs), use_rep='X_pca')
+    sc.pp.neighbors(result.adata, n_pcs=len(result.select), use_rep='X_pca')
     sc.tl.umap(result.adata)
 
     sc.pl.umap(result.adata, color='batch', title='Multiple Batches after BEER')
-    plt.savefig('example4_multiple_batches.png', dpi=300, bbox_inches='tight')
-    print("Saved visualization to example4_multiple_batches.png")
+    plt.savefig('example3_multiple_batches.png', dpi=300, bbox_inches='tight')
+    print("Saved visualization to example3_multiple_batches.png")
 
     return result
 
 
 # ===========================================================================
-# Example 5: Refitting with Different Parameters
+# Example 4: Custom PC Selection
 # ===========================================================================
 
-def example5_refitting():
-    """Example 5: Re-run BEER with adjusted parameters."""
+def example4_custom_pc_selection():
+    """Example 4: Manual PC selection based on correlation thresholds."""
     print("=" * 80)
-    print("Example 5: Parameter Refitting")
-    print("=" * 80)
-
-    # Create data
-    np.random.seed(123)
-    X = np.random.negative_binomial(5, 0.3, size=(500, 1500)).astype(float)
-    batch = np.array(['Batch1'] * 250 + ['Batch2'] * 250)
-
-    adata = ad.AnnData(X)
-    adata.obs['batch'] = batch
-
-    # Initial run
-    beer = BEER(n_pcs=30, n_groups=20, n_rounds=1)
-    result1 = beer.fit_transform(adata, batch_key='batch')
-
-    print(f"Initial run: Selected {len(result1.selected_pcs)} PCs")
-
-    # Refit with different parameters
-    result2 = beer.refit(n_groups=40, n_rounds=2)
-
-    print(f"After refit: Selected {len(result2.selected_pcs)} PCs")
-
-    # Compare
-    fig, axes = plt.subplots(1, 2, figsize=(14, 5))
-
-    axes[0].scatter(result1.rank_correlations, result1.linear_correlations,
-                    c='blue', alpha=0.5, label='Initial')
-    axes[0].set_title('Initial Run')
-    axes[0].set_xlabel('Rank Correlation')
-    axes[0].set_ylabel('Linear Correlation')
-    axes[0].grid(True, alpha=0.3)
-
-    axes[1].scatter(result2.rank_correlations, result2.linear_correlations,
-                    c='red', alpha=0.5, label='Refit')
-    axes[1].set_title('After Refitting')
-    axes[1].set_xlabel('Rank Correlation')
-    axes[1].set_ylabel('Linear Correlation')
-    axes[1].grid(True, alpha=0.3)
-
-    plt.tight_layout()
-    plt.savefig('example5_refitting_comparison.png', dpi=300, bbox_inches='tight')
-    print("Saved comparison to example5_refitting_comparison.png")
-
-    return result1, result2
-
-
-# ===========================================================================
-# Example 6: Custom PC Selection
-# ===========================================================================
-
-def example6_custom_pc_selection():
-    """Example 6: Manual PC selection based on correlation thresholds."""
-    print("=" * 80)
-    print("Example 6: Custom PC Selection")
+    print("Example 4: Custom PC Selection")
     print("=" * 80)
 
     # Create data
@@ -356,53 +220,167 @@ def example6_custom_pc_selection():
     adata = ad.AnnData(X)
     adata.obs['batch'] = batch
 
-    # Run BEER with custom thresholds
-    beer = BEER(
-        n_pcs=50,
-        n_groups=30,
-        rank_correlation_threshold=0.8,  # Stricter threshold
-        linear_correlation_threshold=0.8,
-        use_combat=True
+    # Run BEER
+    result = beer(
+        adata,
+        batch_key='batch',
+        gnum=30,
+        pcnum=50,
+        gn=1000,
+        combat=False,
+        seed=123
     )
 
-    result = beer.fit_transform(adata, batch_key='batch')
+    print(f"Default selection: {len(result.select)} PCs")
 
-    print(f"Selected {len(result.selected_pcs)} PCs with strict threshold (0.8)")
+    # Custom selection with strict threshold
+    strict_pcs = get_use(result, cut_r=0.8, cut_l=0.8)
+    print(f"Strict threshold (0.8): {len(strict_pcs)} PCs")
 
-    # Compare with lenient threshold
-    beer_lenient = BEER(
-        n_pcs=50,
-        n_groups=30,
-        rank_correlation_threshold=0.5,
-        linear_correlation_threshold=0.5
-    )
+    # Custom selection with lenient threshold
+    lenient_pcs = get_use(result, cut_r=0.5, cut_l=0.5)
+    print(f"Lenient threshold (0.5): {len(lenient_pcs)} PCs")
 
-    result_lenient = beer_lenient.fit_transform(adata, batch_key='batch')
+    # Using select_use with rank ratios
+    custom_pcs = select_use(result, cut_r=0.7, cut_l=0.7, rr=0.6, rl=0.6)
+    print(f"Custom rank ratio (0.6): {len(custom_pcs)} PCs")
 
-    print(f"Selected {len(result_lenient.selected_pcs)} PCs with lenient threshold (0.5)")
-
-    # Visualize difference
+    # Visualize correlation scatter
     fig, ax = plt.subplots(figsize=(10, 6))
 
-    ax.scatter(result.rank_correlations, result.linear_correlations,
-               c='gray', alpha=0.3, label='All PCs')
-    ax.scatter(result.rank_correlations[result.selected_pcs],
-               result.linear_correlations[result.selected_pcs],
-               c='red', s=50, label=f'Strict (n={len(result.selected_pcs)})')
-    ax.scatter(result_lenient.rank_correlations[result_lenient.selected_pcs],
-               result_lenient.linear_correlations[result_lenient.selected_pcs],
-               c='blue', s=30, alpha=0.5, label=f'Lenient (n={len(result_lenient.selected_pcs)})')
+    ax.scatter(result.cor, result.lcor, c='gray', alpha=0.5, label='All PCs')
+    ax.scatter(result.cor[result.select], result.lcor[result.select],
+               c='red', s=50, label=f'Selected (n={len(result.select)})')
 
-    ax.set_xlabel('Rank Correlation')
-    ax.set_ylabel('Linear Correlation')
-    ax.set_title('PC Selection with Different Thresholds')
+    ax.axhline(y=0.7, color='blue', linestyle='--', label='Threshold')
+    ax.axvline(x=0.7, color='blue', linestyle='--')
+
+    ax.set_xlabel('Spearman Correlation (cor)')
+    ax.set_ylabel('Pearson Correlation (lcor)')
+    ax.set_title('PC Selection: Batch Correlation')
     ax.legend()
     ax.grid(True, alpha=0.3)
 
-    plt.savefig('example6_custom_selection.png', dpi=300, bbox_inches='tight')
-    print("Saved comparison to example6_custom_selection.png")
+    plt.savefig('example4_custom_selection.png', dpi=300, bbox_inches='tight')
+    print("Saved correlation plot to example4_custom_selection.png")
 
-    return result, result_lenient
+    return result
+
+
+# ===========================================================================
+# Example 5: Using with Different Flavors of HVG Selection
+# ===========================================================================
+
+def example5_with_rmg():
+    """Example 5: Remove specific genes from analysis."""
+    print("=" * 80)
+    print("Example 5: Remove Genes from Analysis")
+    print("=" * 80)
+
+    # Create data
+    np.random.seed(123)
+    n_cells = 400
+    n_genes = 1000
+
+    X = np.random.negative_binomial(5, 0.3, size=(n_cells, n_genes)).astype(float)
+    batch = np.array(['Batch1'] * 200 + ['Batch2'] * 200)
+
+    adata = ad.AnnData(X)
+    adata.obs['batch'] = batch
+    adata.var_names = [f"Gene_{i}" for i in range(n_genes)]
+
+    # Define genes to remove (e.g., cell cycle genes)
+    genes_to_remove = [f"Gene_{i}" for i in range(0, 50)]  # Remove first 50 genes
+
+    print(f"Removing {len(genes_to_remove)} genes from analysis")
+
+    # Run BEER with gene removal
+    result = beer(
+        adata,
+        batch_key='batch',
+        gnum=20,
+        pcnum=30,
+        gn=500,
+        rmg=genes_to_remove,
+        combat=False,
+        seed=123
+    )
+
+    print(f"Selected {len(result.select)} PCs")
+
+    # Visualize
+    sc.pp.neighbors(result.adata, n_pcs=len(result.select), use_rep='X_pca')
+    sc.tl.umap(result.adata)
+
+    sc.pl.umap(result.adata, color='batch', title='BEER with Gene Removal')
+    plt.savefig('example5_gene_removal.png', dpi=300, bbox_inches='tight')
+    print("Saved visualization to example5_gene_removal.png")
+
+    return result
+
+
+# ===========================================================================
+# Example 6: Accessing Detailed Results
+# ===========================================================================
+
+def example6_detailed_results():
+    """Example 6: Exploring detailed BEER results."""
+    print("=" * 80)
+    print("Example 6: Detailed Results")
+    print("=" * 80)
+
+    # Create data
+    np.random.seed(123)
+    X = np.random.negative_binomial(5, 0.3, size=(300, 800)).astype(float)
+    batch = np.array(['Batch1'] * 150 + ['Batch2'] * 150)
+
+    adata = ad.AnnData(X)
+    adata.obs['batch'] = batch
+
+    # Run BEER
+    result = beer(
+        adata,
+        batch_key='batch',
+        gnum=20,
+        pcnum=30,
+        gn=500,
+        seed=123
+    )
+
+    # Print detailed results
+    print("\n--- BEER Results Summary ---")
+    print(f"Number of cells: {result.adata.n_obs}")
+    print(f"Number of genes: {result.adata.n_vars}")
+    print(f"Number of PCs computed: {result.pcnum}")
+    print(f"Number of PCs selected: {len(result.select)}")
+    print(f"Number of MN pairs: {len(result.vp)}")
+
+    print("\n--- PC Correlations ---")
+    print(f"Spearman correlations (first 10): {result.cor[:10]}")
+    print(f"Pearson correlations (first 10): {result.lcor[:10]}")
+
+    print("\n--- P-values and FDR ---")
+    print(f"Spearman p-values (first 5): {result.pv[:5]}")
+    print(f"FDR-adjusted (first 5): {result.fdr[:5]}")
+
+    print("\n--- Selected PC indices (0-based) ---")
+    print(result.select)
+
+    print("\n--- Parameters used ---")
+    print(f"GNUM: {result.gnum}")
+    print(f"GN: {result.gn}")
+    print(f"PCNUM: {result.pcnum}")
+    print(f"ROUND: {result.round}")
+    print(f"SEED: {result.seed}")
+    print(f"COMBAT: {result.combat}")
+
+    # Access AnnData metadata
+    print("\n--- AnnData metadata ---")
+    print(f"Obs columns: {list(result.adata.obs.columns)}")
+    print(f"Layers: {list(result.adata.layers.keys())}")
+    print(f"Obsm keys: {list(result.adata.obsm.keys())}")
+
+    return result
 
 
 # ===========================================================================
@@ -418,10 +396,10 @@ def main():
     examples = [
         ("Basic Usage", example1_basic_usage),
         ("Real Data", example2_real_data),
-        ("BBKNN Enhancement", example3_bbknn_enhancement),
-        ("Multiple Batches", example4_multiple_batches),
-        ("Parameter Refitting", example5_refitting),
-        ("Custom PC Selection", example6_custom_pc_selection),
+        ("Multiple Batches", example3_multiple_batches),
+        ("Custom PC Selection", example4_custom_pc_selection),
+        ("Gene Removal", example5_with_rmg),
+        ("Detailed Results", example6_detailed_results),
     ]
 
     for name, func in examples:
@@ -430,9 +408,9 @@ def main():
             print(f"Running: {name}")
             print(f"{'='*80}\n")
             func()
-            print(f"\n✓ {name} completed successfully\n")
+            print(f"\n{name} completed successfully\n")
         except Exception as e:
-            print(f"\n✗ {name} failed: {e}\n")
+            print(f"\n{name} failed: {e}\n")
             import traceback
             traceback.print_exc()
 

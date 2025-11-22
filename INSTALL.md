@@ -4,13 +4,10 @@
 
 ```bash
 # 1. Install dependencies
-pip install -r requirements_python.txt
+pip install numpy scipy pandas scikit-learn anndata scanpy statsmodels
 
 # 2. Run example
 python example_usage.py
-
-# 3. Run tests
-python test_beer.py
 ```
 
 ## Detailed Installation
@@ -23,13 +20,10 @@ python -m venv beer_env
 source beer_env/bin/activate  # On Windows: beer_env\Scripts\activate
 
 # Install core dependencies
-pip install numpy scipy pandas scikit-learn anndata scanpy
+pip install numpy scipy pandas scikit-learn anndata scanpy statsmodels
 
 # Install optional dependencies
-pip install combat-python bbknn matplotlib seaborn
-
-# Install development dependencies (optional)
-pip install pytest black flake8 mypy
+pip install combat-python matplotlib seaborn
 ```
 
 ### Option 2: Using conda
@@ -40,20 +34,13 @@ conda create -n beer python=3.9
 conda activate beer
 
 # Install from conda-forge
-conda install -c conda-forge numpy scipy pandas scikit-learn anndata scanpy
+conda install -c conda-forge numpy scipy pandas scikit-learn anndata scanpy statsmodels
 
 # Install pip-only packages
-pip install combat-python bbknn
+pip install combat-python
 
 # Install visualization
 conda install -c conda-forge matplotlib seaborn
-```
-
-### Option 3: Using requirements file
-
-```bash
-# Install all dependencies at once
-pip install -r requirements_python.txt
 ```
 
 ## Verifying Installation
@@ -76,62 +63,33 @@ import sklearn
 import anndata as ad
 import scanpy as sc
 
-print("✓ Core dependencies installed successfully")
+print("Core dependencies installed successfully")
 
 # Test optional dependencies
 try:
     from combat.pycombat import pycombat
-    print("✓ combat-python installed")
+    print("combat-python installed")
 except ImportError:
-    print("✗ combat-python not installed (optional)")
-
-try:
-    import bbknn
-    print("✓ bbknn installed")
-except ImportError:
-    print("✗ bbknn not installed (optional)")
+    print("combat-python not installed (optional)")
 
 try:
     import matplotlib.pyplot as plt
-    print("✓ matplotlib installed")
+    print("matplotlib installed")
 except ImportError:
-    print("✗ matplotlib not installed (optional)")
+    print("matplotlib not installed (optional)")
 
 # Test BEER import
 try:
-    from beer import BEER
-    print("✓ BEER module can be imported")
+    from beer import beer
+    print("BEER module can be imported")
 except ImportError as e:
-    print(f"✗ BEER module import failed: {e}")
+    print(f"BEER module import failed: {e}")
 ```
 
 Run the test:
+
 ```bash
 python test_imports.py
-```
-
-### Run Unit Tests
-
-```bash
-# Run all tests
-python test_beer.py
-
-# Expected output:
-# ================================================================================
-# BEER Python Implementation - Test Suite
-# ================================================================================
-#
-# test_aggregate_by_group_mean (test_beer.TestUtilityFunctions) ... ok
-# test_aggregate_by_group_sum (test_beer.TestUtilityFunctions) ... ok
-# ...
-# ================================================================================
-# Test Summary
-# ================================================================================
-# Tests run: 30+
-# Successes: 30+
-# Failures: 0
-# Errors: 0
-# ================================================================================
 ```
 
 ## Troubleshooting
@@ -143,22 +101,12 @@ ImportError: No module named 'combat'
 ```
 
 **Solution:**
+
 ```bash
 pip install combat-python
 ```
 
-### Issue: ImportError for bbknn
-
-```
-ImportError: No module named 'bbknn'
-```
-
-**Solution:**
-```bash
-pip install bbknn
-```
-
-Note: BBKNN is optional. BEER will work without it, but BBKNN enhancement will be unavailable.
+Note: ComBat is optional. BEER will work without it.
 
 ### Issue: NumPy/SciPy installation fails
 
@@ -167,6 +115,7 @@ ERROR: Failed building wheel for numpy
 ```
 
 **Solution (Linux/Mac):**
+
 ```bash
 # Install system dependencies first
 sudo apt-get install python3-dev  # Ubuntu/Debian
@@ -178,6 +127,7 @@ pip install numpy scipy
 ```
 
 **Solution (Windows):**
+
 ```bash
 # Use pre-built wheels
 pip install --upgrade pip
@@ -187,6 +137,7 @@ pip install numpy scipy --only-binary :all:
 ### Issue: Scanpy/AnnData installation fails
 
 **Solution:**
+
 ```bash
 # Try installing from conda-forge
 conda install -c conda-forge scanpy
@@ -202,6 +153,7 @@ MemoryError: Unable to allocate array
 ```
 
 **Solution:**
+
 - Close other applications
 - Reduce test data size
 - Use a machine with more RAM (recommended: 8 GB+)
@@ -213,6 +165,7 @@ ImportError: No module named 'sklearn'
 ```
 
 **Solution:**
+
 ```bash
 pip install scikit-learn
 ```
@@ -233,8 +186,8 @@ sudo apt-get install build-essential
 python3 -m venv beer_env
 source beer_env/bin/activate
 
-# Install BEER
-pip install -r requirements_python.txt
+# Install BEER dependencies
+pip install numpy scipy pandas scikit-learn anndata scanpy statsmodels
 ```
 
 ### macOS
@@ -250,8 +203,8 @@ brew install python
 python3 -m venv beer_env
 source beer_env/bin/activate
 
-# Install BEER
-pip install -r requirements_python.txt
+# Install BEER dependencies
+pip install numpy scipy pandas scikit-learn anndata scanpy statsmodels
 ```
 
 ### Windows
@@ -264,72 +217,17 @@ pip install -r requirements_python.txt
 python -m venv beer_env
 beer_env\Scripts\activate
 
-# Install BEER
-pip install -r requirements_python.txt
-```
-
-## Docker Installation (Advanced)
-
-### Dockerfile
-
-```dockerfile
-FROM python:3.9-slim
-
-# Install system dependencies
-RUN apt-get update && apt-get install -y \
-    build-essential \
-    && rm -rf /var/lib/apt/lists/*
-
-# Set working directory
-WORKDIR /app
-
-# Copy requirements
-COPY requirements_python.txt .
-
-# Install Python dependencies
-RUN pip install --no-cache-dir -r requirements_python.txt
-
-# Copy BEER files
-COPY beer.py .
-COPY example_usage.py .
-COPY test_beer.py .
-
-# Default command
-CMD ["python", "test_beer.py"]
-```
-
-### Build and Run
-
-```bash
-# Build Docker image
-docker build -t beer-python .
-
-# Run tests
-docker run beer-python
-
-# Run interactive shell
-docker run -it beer-python bash
-
-# Run with mounted data directory
-docker run -v /path/to/data:/data beer-python python your_script.py
+# Install BEER dependencies
+pip install numpy scipy pandas scikit-learn anndata scanpy statsmodels
 ```
 
 ## Upgrading
-
-### Upgrade BEER
-
-```bash
-# Pull latest code from GitHub
-git pull origin master
-
-# No additional installation needed (pure Python)
-```
 
 ### Upgrade Dependencies
 
 ```bash
 # Upgrade all dependencies
-pip install --upgrade -r requirements_python.txt
+pip install --upgrade numpy scipy pandas scikit-learn anndata scanpy statsmodels
 
 # Upgrade specific package
 pip install --upgrade scanpy
@@ -345,13 +243,6 @@ deactivate
 
 # Remove environment directory
 rm -rf beer_env
-```
-
-### Remove System-wide Installation
-
-```bash
-# Uninstall dependencies
-pip uninstall numpy scipy pandas scikit-learn anndata scanpy combat-python bbknn matplotlib seaborn
 ```
 
 ## Getting Help
@@ -385,21 +276,21 @@ If you encounter installation issues:
 
 ### Community Support
 
-- **GitHub Issues**: https://github.com/jumphone/BEER/issues
-- **Original BEER**: https://github.com/jumphone/BEER
-- **Scanpy Help**: https://discourse.scverse.org/
+- **GitHub Issues**: <https://github.com/jumphone/BEER/issues>
+- **Original BEER**: <https://github.com/jumphone/BEER>
+- **Scanpy Help**: <https://discourse.scverse.org/>
 
 ## Next Steps
 
 After successful installation:
 
 1. **Run Examples**: `python example_usage.py`
-2. **Read Documentation**: See [README_PYTHON.md](README_PYTHON.md)
+2. **Read Documentation**: See [README.md](README.md)
 3. **Explore API**: Read docstrings in [beer.py](beer.py)
 4. **Try Your Data**: Follow examples to analyze your own data
 
 ---
 
-**Last Updated**: October 2025
+**Last Updated**: November 2024
 **Python Version**: 3.8+
 **Platform**: Linux, macOS, Windows
